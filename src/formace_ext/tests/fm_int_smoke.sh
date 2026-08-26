@@ -16,6 +16,25 @@ fm_baseline=$(./abc -c "read_blif $safe; strash; fm_int -o -F 10 -v")
 printf '%s\n' "$fm_baseline"
 printf '%s' "$fm_baseline" | rg -q 'Property proved\.'
 
+scorr_baseline=$(./abc -c "read_blif $safe; strash; addpi; scorr; addflop; int -F 10 -v")
+printf '%s\n' "$scorr_baseline"
+printf '%s' "$scorr_baseline" | rg -q 'Property proved\.'
+
+fm_scorr_original=$(./abc -c "read_blif $safe; strash; addpi; fm_int -s -o -F 10 -v")
+printf '%s\n' "$fm_scorr_original"
+printf '%s' "$fm_scorr_original" | rg -q 'Property proved\.'
+scorr_shape=$(printf '%s' "$scorr_baseline" | rg '^AIG:')
+fm_scorr_shape=$(printf '%s' "$fm_scorr_original" | rg '^AIG:')
+test "$scorr_shape" = "$fm_scorr_shape"
+scorr_steps=$(printf '%s' "$scorr_baseline" | rg '^Step =|^   I =' | sed -E 's/  Time =.*//')
+fm_scorr_steps=$(printf '%s' "$fm_scorr_original" | rg '^Step =|^   I =' | sed -E 's/  Time =.*//')
+test "$scorr_steps" = "$fm_scorr_steps"
+
+fm_scorr_minimum=$(./abc -c "read_blif $safe; strash; addpi; fm_int -s -m -F 10 -v")
+printf '%s\n' "$fm_scorr_minimum"
+printf '%s' "$fm_scorr_minimum" | rg -q 'Property proved\.'
+printf '%s' "$fm_scorr_minimum" | rg -q 'ForMACE minvar CAMUS minimum selected'
+
 partition=$(./abc -c "read_blif $safe; strash; fm_int -o -S 2 -F 3 -a -i -I /tmp/fm_int_partition.aig -v")
 printf '%s\n' "$partition"
 printf '%s' "$partition" | rg -q 'partition: suffix k = 2, bad states = 1\.\.k'
