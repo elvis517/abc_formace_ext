@@ -128,6 +128,42 @@ finish:
     return RetValue;
 }
 
+static int Fm_TestMinimumCommon( void )
+{
+    Fm_CamusMan_t * pMans[2] = { NULL, NULL };
+    Vec_Int_t * vAll = NULL, * vMinimum = NULL;
+    int Lits[3] = { toLit(0), toLit(1), toLit(2) };
+    int Background0 = toLitCond( 0, 1 );
+    int Background1 = toLitCond( 1, 1 );
+    int i, k, Group, Mask = 0, RetValue = 0;
+    pMans[0] = Fm_CamusStart( 3, 3 );
+    pMans[1] = Fm_CamusStart( 3, 3 );
+    if ( pMans[0] == NULL || pMans[1] == NULL ||
+         !Fm_CamusAddBackground(pMans[0], &Background0, 1) ||
+         !Fm_CamusAddBackground(pMans[1], &Background1, 1) )
+        goto finish;
+    for ( i = 0; i < 2; i++ )
+        for ( k = 0; k < 3; k++ )
+            if ( !Fm_CamusAddGroup(pMans[i], k, &Lits[k], 1) )
+                goto finish;
+    vAll = Vec_IntStartNatural( 3 );
+    vMinimum = Fm_CamusFindMinimumCommonMus( pMans, 2, vAll, vAll, 0 );
+    if ( vMinimum == NULL || Vec_IntSize(vMinimum) != 2 )
+        goto finish;
+    Vec_IntForEachEntry( vMinimum, Group, i )
+        Mask |= 1 << Group;
+    RetValue = Mask == 3 &&
+        Fm_CamusSolve(pMans[0], vMinimum) == l_False &&
+        Fm_CamusSolve(pMans[1], vMinimum) == l_False;
+
+finish:
+    Vec_IntFreeP( &vMinimum );
+    Vec_IntFreeP( &vAll );
+    Fm_CamusStop( pMans[0] );
+    Fm_CamusStop( pMans[1] );
+    return RetValue;
+}
+
 #define FM_TEST_MAX_VARS    5
 #define FM_TEST_MAX_GROUPS  7
 #define FM_TEST_MAX_CLAUSES 24
@@ -210,7 +246,8 @@ static int Fm_TestAddRandomClause( Fm_TestFormula_t * p, Fm_CamusMan_t * pCamus,
  * to exercise the non-contiguous group IDs used after runeco accumulates old
  * support.
  */
-static int Fm_TestRandomMinimumAgainstIndependentOracle( void )
+static int Fm_TestRandomMinimumAgainstIndependentOracle( const Fm_CamusOptions_t * pOptions,
+                                                          const char * pVariant )
 {
     unsigned State = 0x5170811u;
     int Case;
@@ -224,7 +261,7 @@ static int Fm_TestRandomMinimumAgainstIndependentOracle( void )
 
         Formula.nVars = 1 + Fm_TestRandom(&State) % FM_TEST_MAX_VARS;
         Formula.nGroups = 1 + Fm_TestRandom(&State) % FM_TEST_MAX_GROUPS;
-        pCamus = Fm_CamusStart( Formula.nVars, Formula.nGroups );
+        pCamus = Fm_CamusStartWithOptions( Formula.nVars, Formula.nGroups, pOptions );
         vCandidates = Vec_IntAlloc( Formula.nGroups );
         if ( pCamus == NULL )
             goto case_finish;
@@ -288,7 +325,8 @@ case_finish:
         Fm_CamusStop( pCamus );
         if ( !RetValue )
         {
-            fprintf( stderr, "independent minimum-cardinality oracle failed on random case %d\n", Case );
+            fprintf( stderr, "independent minimum-cardinality oracle failed for %s on random case %d\n",
+                     pVariant, Case );
             return 0;
         }
     }
@@ -298,6 +336,8 @@ case_finish:
 int main( void )
 {
     Fm_CamusMan_t * p;
+    Fm_CamusStats_t Stats;
+    Fm_CamusOptions_t DefaultOptions;
     Vec_Int_t * vAll = NULL, * vMus = NULL, * vMinimum = NULL, * vOne = NULL;
     int vBackgroundSmall[2] = { toLitCond(0, 1), toLitCond(1, 1) };
     int vBackgroundLarge[3] = { toLitCond(2, 1), toLitCond(3, 1), toLitCond(4, 1) };
@@ -308,16 +348,94 @@ int main( void )
     int vGroupE[1] = { toLit(4) };
     /* Deliberately exceeds 32 bits: verifies the ABC_INT64_T limit path. */
     ABC_INT64_T nConfLimit = (ABC_INT64_T)ABC_CONST(4294967296);
-    int RetValue = 1;
+    const char * pVariants[] = { "full", "no-core-shrink", "no-mus-seed",
+        "core-only-seed", "no-model-absorb", "no-mss-growth", "linear-map-bounds",
+        "default-cadical", "cadical-plain-stable", "cadical-preprocessing", "cadical-no-ilb",
+        "cadical-default-phases", "cadical-preprocessing-no-ilb",
+        "cadical-preprocessing-default-phases", "cadical-no-ilb-default-phases" };
+    int nVariants = sizeof(pVariants) / sizeof(pVariants[0]);
+    int RetValue = 1, Variant;
 
     if ( strncmp(Fm_CamusBackendName(), "cadical-", 8) )
+        return 1;
+    Fm_CamusOptionsDefault( &DefaultOptions );
+    if ( !DefaultOptions.fUseCadicalTuning || DefaultOptions.fUseCadicalPlain ||
+         !DefaultOptions.fUseCadicalIlb || DefaultOptions.fUseCadicalStableOnly )
         return 1;
     if ( !Fm_TestInvalidLiteral() )
         return 1;
     if ( !Fm_TestMinimumAgainstBruteForce() )
         return 1;
-    if ( !Fm_TestRandomMinimumAgainstIndependentOracle() )
+    if ( !Fm_TestMinimumCommon() )
         return 1;
+    for ( Variant = 0; Variant < nVariants; Variant++ )
+    {
+        Fm_CamusOptions_t Options;
+        Fm_CamusOptionsDefault( &Options );
+        if ( !strcmp(pVariants[Variant], "no-core-shrink") )
+            Options.fUseCoreShrink = 0;
+        else if ( !strcmp(pVariants[Variant], "no-mus-seed") )
+            Options.fUseMusSeed = 0;
+        else if ( !strcmp(pVariants[Variant], "core-only-seed") )
+            Options.fMinimizeSeed = 0;
+        else if ( !strcmp(pVariants[Variant], "no-model-absorb") )
+            Options.fUseModelAbsorb = 0;
+        else if ( !strcmp(pVariants[Variant], "no-mss-growth") )
+            Options.fGrowMcs = 0;
+        else if ( !strcmp(pVariants[Variant], "linear-map-bounds") )
+            Options.fBinaryMapBounds = 0;
+        else if ( !strcmp(pVariants[Variant], "default-cadical") )
+        {
+            Options.fUseCadicalTuning = 0;
+            Options.fUseCadicalPlain = 0;
+            Options.fUseCadicalIlb = 0;
+            Options.fUseCadicalStableOnly = 0;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-plain-stable") )
+        {
+            Options.fUseCadicalPlain = 1;
+            Options.fUseCadicalIlb = 1;
+            Options.fUseCadicalStableOnly = 1;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-preprocessing") )
+        {
+            Options.fUseCadicalPlain = 0;
+            Options.fUseCadicalIlb = 1;
+            Options.fUseCadicalStableOnly = 1;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-no-ilb") )
+        {
+            Options.fUseCadicalPlain = 1;
+            Options.fUseCadicalIlb = 0;
+            Options.fUseCadicalStableOnly = 1;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-default-phases") )
+        {
+            Options.fUseCadicalPlain = 1;
+            Options.fUseCadicalIlb = 1;
+            Options.fUseCadicalStableOnly = 0;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-preprocessing-no-ilb") )
+        {
+            Options.fUseCadicalPlain = 0;
+            Options.fUseCadicalIlb = 0;
+            Options.fUseCadicalStableOnly = 1;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-preprocessing-default-phases") )
+        {
+            Options.fUseCadicalPlain = 0;
+            Options.fUseCadicalIlb = 1;
+            Options.fUseCadicalStableOnly = 0;
+        }
+        else if ( !strcmp(pVariants[Variant], "cadical-no-ilb-default-phases") )
+        {
+            Options.fUseCadicalPlain = 1;
+            Options.fUseCadicalIlb = 0;
+            Options.fUseCadicalStableOnly = 0;
+        }
+        if ( !Fm_TestRandomMinimumAgainstIndependentOracle(&Options, pVariants[Variant]) )
+            return 1;
+    }
     p = Fm_CamusStart( 5, 5 );
     if ( p == NULL ||
          !Fm_CamusAddBackground(p, vBackgroundSmall, 2) ||
@@ -339,6 +457,9 @@ int main( void )
     vMinimum = Fm_CamusFindMinimumMus( p, vAll );
     if ( !Fm_TestIsMus(p, vMinimum) || Vec_IntSize(vMinimum) != 2 )
         goto finish_minimum;
+    Fm_CamusGetStats( p, &Stats );
+    if ( Stats.nDisjointLower != 2 || Stats.nSolverConstructions != 2 )
+        goto finish_minimum;
 
     vOne = Vec_IntAlloc( 1 );
     Vec_IntPush( vOne, 0 );
@@ -354,8 +475,8 @@ int main( void )
     if ( Fm_CamusSolve(p, vOne) != l_True )
         goto finish_one;
 
-    printf( "fm_camus direct API test passed with backend %s, 512 independent exhaustive-oracle cases, 64-bit conflict/timeout/root-UNSAT checks: MUS size = %d; minimum MUS size = %d.\n",
-            Fm_CamusBackendName(), Vec_IntSize(vMus), Vec_IntSize(vMinimum) );
+    printf( "fm_camus direct API test passed with backend %s, %d variants x 512 independent exhaustive-oracle cases, 64-bit conflict/timeout/root-UNSAT checks: MUS size = %d; minimum MUS size = %d.\n",
+            Fm_CamusBackendName(), nVariants, Vec_IntSize(vMus), Vec_IntSize(vMinimum) );
     RetValue = 0;
 
 finish_one:

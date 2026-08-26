@@ -2,6 +2,111 @@
 
 This file records ForMACE-specific changes made in this ABC fork.
 
+## 2026-08-25
+
+- Added orthogonal `fm_int -s` preprocessing. `fm_int -s -o` runs default
+  `scorr; addflop` followed by original ABC interpolation, while
+  `fm_int -s -m` uses the same reduced network with exact minimum-support
+  interpolation. Callers run `fold; addpi` first to reproduce the comparison
+  order `fold; addpi; scorr; addflop; IMC`.
+- Extended the focused `fm_int` smoke test with both scorr-IMC variants.
+
+## 2026-08-20
+
+- Added paper-derived disjoint-MCS bootstrapping and certified packing lower
+  bounds to the shared minimum-UNSAT engine, plus inclusion-subsumption of
+  learned correction sets.
+- Added combined-OR MSS growth and bounded greedy/direct/WalkSAT-style
+  lower-bound candidate repair for `runeco -g`; all heuristic candidates must
+  hit every learned correction and pass every target SAT oracle. Reduced maps
+  are now constructed lazily only when those candidates cannot be found.
+- Reduced exact Unit14 `runeco -g` runtime from 229.18s to 76.49s while
+  retaining the exact seven-input result, evolving-target sufficiency, final
+  miter proof, and CEC. On grouped k=11 inputs, `msmie.3.prop1-func-interl`
+  improved from 93.20s to 62.56s CPU and `mcs.3.prop1-back-serstep` from
+  313.22s to 39.63s CPU with unchanged exact minima.
+
+- Added `runeco -g` for exact minimum-cardinality support shared across a
+  fixed family of multi-target two-copy ECO relations. The multi-oracle
+  implementation is equivalent to `(B_0 OR ... OR B_(k-1)) AND Eq_S` without
+  constructing one large selector CNF.
+- Added `Fm_CamusFindMinimumCommonMus()`: each SAT candidate is grown to an
+  MSS, its complementary MCS is learned by one shared hitting-set map, and all
+  still-SAT target managers contribute corrections in a batch.
+- Added exact dynamic map reduction by learned-MCS incidence equivalence and
+  dominance. The quotient is rebuilt after every correction, preserving the
+  full candidate universe while reducing current map symmetry.
+- Added evolving-target sufficiency checks, final patched-miter verification,
+  independent CEC coverage, mutually exclusive `-a`/`-m`/`-g` parsing, and a
+  two-target regression with an exact two-of-three shared support.
+- Documented the guarantee boundary: `-g` is globally minimum for the recorded
+  fixed target relations, not over all possible joint patch-function choices.
+
+## 2026-08-19
+
+- Added the extension-owned `fm_eco` command for DAC'18 ECO patch construction
+  with Craig interpolation.
+- Made support selection orthogonal to function construction: `fm_eco` uses
+  ABC's original support heuristic by default and exact grouped MinUNSAT with
+  `-m`, completing the original/minimum x SOP/ITP four-method matrix.
+- Reused the existing Acb windowing, miter, reverse target loop, support
+  selectors, output generation, and CEC instead of creating a second ECO
+  implementation.
+- Added constant-partition handling, selector-free proof construction with
+  only chosen divisor variables shared, internal patched-miter checking, and
+  useful command failure status.
+- Added `fm_eco_test.sh` for original- and minimum-support interpolants and
+  retained the exhaustive real-encoding support audit under `-m -w`.
+- Added the resumable `try/tools/0819_ECO_Simple/run_eco_2017.py` experiment
+  runner. All four methods pass internal and independent CEC on ICCAD'17
+  `unit1` and `unit2`.
+- Made exact CAMUS hitting-set search incremental: one reusable map solver and
+  sequential counter now receive new MCS clauses incrementally, while the
+  proven hitting-set lower bound is retained across refinements.
+- Added `runeco -v`/`fm_eco -v` CAMUS phase and search counters. On ICCAD'17
+  `unit9`, the incremental map reduced `sop_minimum` wall time from 126.35s to
+  44.72s and 44.44s in two runs while preserving the exact eight-input result
+  and both equivalence checks.
+- Changed the production guarded-formula CaDiCaL configuration to enable
+  preprocessing and normal phase switching while retaining `ilb=2`. The
+  tuning matrix was faster in seven of eight cases (0.32x geometric-mean wall
+  time) with identical exact minima. Added `cadical-plain-stable` to preserve
+  the former production configuration as an explicit ablation.
+- Added `runeco -a` and `fm_eco -a` assumption-only support ablations. They
+  retain `sat_solver_minimize_assumptions()` while skipping `Acb_FindSupport()`,
+  extending the ECO runner to a six-method matrix with aggregate Markdown,
+  CSV, and JSON tables for all selected ICCAD'17 cases.
+
+## 2026-08-18
+
+- Added the production `fm_minunsat` ABC command for exact clause-level
+  minimum UNSAT directly from DIMACS CNF, without an AIG conversion.
+- Added optional group-file input with a hard/background first group,
+  multi-clause unit-cost optional groups, strict clause-assignment validation,
+  resource limits, raw-core/all-candidate seed choices, and phase statistics.
+- Exposed every exact ablation configuration through `fm_minunsat -A` and
+  added `-j` machine-readable output so experiments invoke the production ABC
+  executable rather than compiling a private benchmark driver.
+- Added independent CaDiCaL `plain`, `ilb=2`, and `stabilizeonly=1` switches
+  plus all three pairwise configurations, enabling a separate complete `2^3`
+  solver-tuning matrix without changing the original ablation variants.
+- Added command-level regressions for clause-level minimum, raw-core seeding,
+  grouped hard clauses, hard-only UNSAT, SAT input, and multiline DIMACS.
+- Added runtime-configurable, exact minimum-UNSAT ablations for failed-core
+  shrinking, MUS upper-bound seeding, model-guided MSS growth, MCS growth,
+  map-bound search, and CaDiCaL tuning. Production defaults are unchanged.
+- Added a raw-core seed variant that uses the first failed-assumption core as
+  a valid upper bound without paying for deletion minimization.
+- Added per-phase minimum-UNSAT counters/timers and extended the independent
+  exhaustive oracle to cover all seven production/ablation configurations.
+- Kept the extension tree focused on C sources, user guides, regression
+  tests, and fixtures by moving the MinUNSAT ECO runner and results to the
+  workspace's `try/tools` and `try/results` areas.
+- Added `tests/run_all.sh` as the single entry point for the complete focused
+  regression suite.
+- Added extension-local Git exceptions so the small Verilog and BLIF fixtures
+  required by the smoke tests are present in a clean checkout.
+
 ## 2026-08-11
 
 - Audited `runeco -m` end to end. Confirmed that it minimizes the number of

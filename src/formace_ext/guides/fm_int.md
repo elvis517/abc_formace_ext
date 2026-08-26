@@ -16,19 +16,22 @@ The current ABC network must be:
 - free of constraints; and
 - a single-property-output safety miter.
 
-The command does not replace the current network.  It updates ABC's normal
-proof status, frame count, and counterexample when one is found.
+Without `-s`, the command does not replace the current network. With `-s`, the
+embedded `scorr; addflop` preprocessing replaces it with the reduced network,
+just as those standalone commands do. In either case, `fm_int` updates ABC's
+normal proof status, frame count, and counterexample when one is found.
 
 ## Usage
 
 ```text
-fm_int (-o | -m | -y) [-CFSTK num] [-I file] [-L num] [-airtcgvh]
+fm_int (-o | -m | -y) [-s] [-CFSTK num] [-I file] [-L num] [-airtcgvh]
 ```
 
 ```bash
 ./abc -c "read_blif design.blif; strash; fm_int -m -F 100 -v"
 ./abc -c "read_blif design.blif; strash; fm_int -y -L 12 -T 60"
 ./abc -c "read_aiger design.aig; strash; fm_int -m -S 5 -a -F 6 -L 227 -v"
+./abc -c "read_aiger design.aig; fold; addpi; fm_int -s -m -F 100 -v"
 ```
 
 - `-o`: original ABC proof interpolation without boundary minimization.  This
@@ -41,6 +44,11 @@ fm_int (-o | -m | -y) [-CFSTK num] [-I file] [-L num] [-airtcgvh]
   therefore locally minimum for that support. If the restricted support is not
   enough to keep the current A/B formula UNSAT, it retains the baseline
   interpolant.
+- `-s`: run ABC's default `scorr` followed by `addflop` before IMC. This is
+  orthogonal to the interpolation mode: `-s -o` is scorr plus original IMC,
+  while `-s -m` is scorr plus exact minimum-support IMC. For Tom's flow, use
+  `fold; addpi; fm_int -s ...`; do not run `addflop` before `fm_int -s`, because
+  the intended order is `fold; addpi; scorr; addflop; IMC`.
 - `-L num`: maximum candidates for the exact search, default `16`.  Exceeding
   the limit returns `Property UNDECIDED`; it does not claim a proof or change
   the current network.
@@ -106,7 +114,8 @@ Run the focused regression suite from the repository root:
 bash src/formace_ext/tests/fm_int_smoke.sh
 ```
 
-It checks baseline `int`, CAMUS minvar and CAMUS-hybrid proof on a two-latch
-safe design, the zero-boundary constant case, a frame-1 counterexample, and
-the `-L` resource guard. The verbose checks require the CAMUS per-step
-selection messages.
+It checks baseline `int`, the `scorr; addflop` baseline, `fm_int -s -o`, CAMUS
+minvar (with and without scorr), and CAMUS-hybrid proof on a two-latch safe
+design, the zero-boundary constant case, a frame-1 counterexample, and the
+`-L` resource guard. The verbose checks require the CAMUS per-step selection
+messages.
